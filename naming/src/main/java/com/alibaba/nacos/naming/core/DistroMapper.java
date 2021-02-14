@@ -41,25 +41,26 @@ import java.util.List;
  */
 @Component("distroMapper")
 public class DistroMapper extends MemberChangeListener {
-    
+
     /**
      * List of service nodes, you must ensure that the order of healthyList is the same for all nodes.
+     * 服务节点列表，必须确保所有节点的healthyList顺序相同。
      */
     private volatile List<String> healthyList = new ArrayList<>();
-    
+
     private final SwitchDomain switchDomain;
-    
+
     private final ServerMemberManager memberManager;
-    
+
     public DistroMapper(ServerMemberManager memberManager, SwitchDomain switchDomain) {
         this.memberManager = memberManager;
         this.switchDomain = switchDomain;
     }
-    
+
     public List<String> getHealthyList() {
         return healthyList;
     }
-    
+
     /**
      * init server list.
      */
@@ -68,40 +69,44 @@ public class DistroMapper extends MemberChangeListener {
         NotifyCenter.registerSubscriber(this);
         this.healthyList = MemberUtil.simpleMembers(memberManager.allMembers());
     }
-    
+
     public boolean responsible(Cluster cluster, Instance instance) {
         return switchDomain.isHealthCheckEnabled(cluster.getServiceName()) && !cluster.getHealthCheckTask()
                 .isCancelled() && responsible(cluster.getServiceName()) && cluster.contains(instance);
     }
-    
+
     /**
-     * Judge whether current server is responsible for input service.
+     * Judge whether current server is responsible for input service. 判断当前服务器是否负责输入服务。
      *
      * @param serviceName service name
      * @return true if input service is response, otherwise false
      */
     public boolean responsible(String serviceName) {
+        //获取当前集群列表
         final List<String> servers = healthyList;
-        
+
         if (!switchDomain.isDistroEnabled() || EnvUtil.getStandaloneMode()) {
             return true;
         }
-        
+
         if (CollectionUtils.isEmpty(servers)) {
             // means distro config is not ready yet
             return false;
         }
-        
+
+        //获取本机ip地址在在集群列表的index
         int index = servers.indexOf(EnvUtil.getLocalAddress());
         int lastIndex = servers.lastIndexOf(EnvUtil.getLocalAddress());
         if (lastIndex < 0 || index < 0) {
             return true;
         }
-        
+
+        //计算serviceName的hash值和服务长度求余数得到目标服务器index
         int target = distroHash(serviceName) % servers.size();
+        //判断是不是本机处理
         return target >= index && target <= lastIndex;
     }
-    
+
     /**
      * Calculate which other server response input service.
      *
@@ -110,13 +115,14 @@ public class DistroMapper extends MemberChangeListener {
      */
     public String mapSrv(String serviceName) {
         final List<String> servers = healthyList;
-        
+
         if (CollectionUtils.isEmpty(servers) || !switchDomain.isDistroEnabled()) {
             return EnvUtil.getLocalAddress();
         }
-        
+
         try {
             int index = distroHash(serviceName) % servers.size();
+            //获取目标服务地址
             return servers.get(index);
         } catch (Throwable e) {
             Loggers.SRV_LOG
@@ -124,23 +130,25 @@ public class DistroMapper extends MemberChangeListener {
             return EnvUtil.getLocalAddress();
         }
     }
-    
+
     private int distroHash(String serviceName) {
         return Math.abs(serviceName.hashCode() % Integer.MAX_VALUE);
     }
-    
+
     @Override
     public void onEvent(MembersChangeEvent event) {
         // Here, the node list must be sorted to ensure that all nacos-server's
         // node list is in the same order
+        //过滤出是 NodeState.UP 或 NodeState.SUSPICIOUS 状态的节点
         List<String> list = MemberUtil.simpleMembers(MemberUtil.selectTargetMembers(event.getMembers(),
                 member -> NodeState.UP.equals(member.getState()) || NodeState.SUSPICIOUS.equals(member.getState())));
+        //必须排序，确保所有服务节点列表顺序都是一样
         Collections.sort(list);
         Collection<String> old = healthyList;
         healthyList = Collections.unmodifiableList(list);
         Loggers.SRV_LOG.info("[NACOS-DISTRO] healthy server list changed, old: {}, new: {}", old, healthyList);
     }
-    
+
     @Override
     public boolean ignoreExpireEvent() {
         return true;

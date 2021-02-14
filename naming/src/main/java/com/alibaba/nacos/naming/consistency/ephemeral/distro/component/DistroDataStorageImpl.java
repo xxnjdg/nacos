@@ -36,20 +36,21 @@ import java.util.Map;
  * @author xiweng.yy
  */
 public class DistroDataStorageImpl implements DistroDataStorage {
-    
+
     private final DataStore dataStore;
-    
+
     private final DistroMapper distroMapper;
-    
+
     public DistroDataStorageImpl(DataStore dataStore, DistroMapper distroMapper) {
         this.dataStore = dataStore;
         this.distroMapper = distroMapper;
     }
-    
+
     @Override
     public DistroData getDistroData(DistroKey distroKey) {
         Map<String, Datum> result = new HashMap<>(1);
         if (distroKey instanceof DistroHttpCombinedKey) {
+            //批量获取 Datum
             result = dataStore.batchGet(((DistroHttpCombinedKey) distroKey).getActualResourceTypes());
         } else {
             Datum datum = dataStore.get(distroKey.getResourceKey());
@@ -58,7 +59,7 @@ public class DistroDataStorageImpl implements DistroDataStorage {
         byte[] dataContent = ApplicationUtils.getBean(Serializer.class).serialize(result);
         return new DistroData(distroKey, dataContent);
     }
-    
+
     @Override
     public DistroData getDatumSnapshot() {
         Map<String, Datum> result = dataStore.getDataMap();
@@ -66,11 +67,12 @@ public class DistroDataStorageImpl implements DistroDataStorage {
         DistroKey distroKey = new DistroKey("snapshot", KeyBuilder.INSTANCE_LIST_KEY_PREFIX);
         return new DistroData(distroKey, dataContent);
     }
-    
+
     @Override
     public DistroData getVerifyData() {
         Map<String, String> keyChecksums = new HashMap<>(64);
         for (String key : dataStore.keys()) {
+            //不处理不属于当前Server的Service
             if (!distroMapper.responsible(KeyBuilder.getServiceName(key))) {
                 continue;
             }
@@ -78,6 +80,7 @@ public class DistroDataStorageImpl implements DistroDataStorage {
             if (datum == null) {
                 continue;
             }
+            //计算 Datum checksum
             keyChecksums.put(key, datum.value.getChecksum());
         }
         if (keyChecksums.isEmpty()) {

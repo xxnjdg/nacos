@@ -34,29 +34,31 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 @Component
 public class DataStore {
-    
+
+    //内存数据存储
+    //key = KeyBuilder.buildInstanceListKey(namespaceId, serviceName, ephemeral);
     private Map<String, Datum> dataMap = new ConcurrentHashMap<>(1024);
-    
+
     public void put(String key, Datum value) {
         dataMap.put(key, value);
     }
-    
+
     public Datum remove(String key) {
         return dataMap.remove(key);
     }
-    
+
     public Set<String> keys() {
         return dataMap.keySet();
     }
-    
+
     public Datum get(String key) {
         return dataMap.get(key);
     }
-    
+
     public boolean contains(String key) {
         return dataMap.containsKey(key);
     }
-    
+
     /**
      * Batch get datum for a list of keys.
      *
@@ -74,7 +76,7 @@ public class DataStore {
         }
         return map;
     }
-    
+
     public int getInstanceCount() {
         int count = 0;
         for (Map.Entry<String, Datum> entry : dataMap.entrySet()) {
@@ -88,7 +90,7 @@ public class DataStore {
         }
         return count;
     }
-    
+
     public Map<String, Datum> getDataMap() {
         return dataMap;
     }

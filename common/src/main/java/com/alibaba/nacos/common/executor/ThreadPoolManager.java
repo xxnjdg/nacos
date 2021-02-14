@@ -38,17 +38,20 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * @author <a href="mailto:liaochuntao@live.com">liaochuntao</a>
  */
 public final class ThreadPoolManager {
-    
+
     private static final Logger LOGGER = LoggerFactory.getLogger(ThreadPoolManager.class);
-    
+
+    //通过 map 管理线程池
+    //key = namespace  value = key = group value = 线程池
     private Map<String, Map<String, Set<ExecutorService>>> resourcesManager;
-    
+
+    //key = namespace value = 锁
     private Map<String, Object> lockers = new ConcurrentHashMap<String, Object>(8);
-    
+
     private static final ThreadPoolManager INSTANCE = new ThreadPoolManager();
-    
+
     private static final AtomicBoolean CLOSED = new AtomicBoolean(false);
-    
+
     static {
         INSTANCE.init();
         ThreadUtils.addShutdownHook(new Thread(new Runnable() {
@@ -60,18 +63,18 @@ public final class ThreadPoolManager {
             }
         }));
     }
-    
+
     public static ThreadPoolManager getInstance() {
         return INSTANCE;
     }
-    
+
     private ThreadPoolManager() {
     }
-    
+
     private void init() {
         resourcesManager = new ConcurrentHashMap<String, Map<String, Set<ExecutorService>>>(8);
     }
-    
+
     /**
      * Register the thread pool resources with the resource manager.
      *
@@ -101,7 +104,7 @@ public final class ThreadPoolManager {
             map.get(group).add(executor);
         }
     }
-    
+
     /**
      * Cancel the uniform lifecycle management for all threads under this resource.
      *
@@ -116,7 +119,7 @@ public final class ThreadPoolManager {
             }
         }
     }
-    
+
     /**
      * Undoing the uniform lifecycle management of {@link ExecutorService} under this resource.
      *
@@ -135,7 +138,7 @@ public final class ThreadPoolManager {
             }
         }
     }
-    
+
     /**
      * Destroys all thread pool resources under this namespace.
      *
@@ -160,7 +163,7 @@ public final class ThreadPoolManager {
             resourcesManager.remove(namespace);
         }
     }
-    
+
     /**
      * This namespace destroys all thread pool resources under the grouping.
      *
@@ -184,7 +187,7 @@ public final class ThreadPoolManager {
             resourcesManager.get(namespace).remove(group);
         }
     }
-    
+
     /**
      * Shutdown thread pool manager.
      */
@@ -197,5 +200,5 @@ public final class ThreadPoolManager {
             INSTANCE.destroy(namespace);
         }
     }
-    
+
 }

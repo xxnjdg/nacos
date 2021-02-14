@@ -35,41 +35,43 @@ import java.util.List;
  * @author xiweng.yy
  */
 public class DistroHttpAgent implements DistroTransportAgent {
-    
+
     private final ServerMemberManager memberManager;
-    
+
     public DistroHttpAgent(ServerMemberManager memberManager) {
         this.memberManager = memberManager;
     }
-    
+
     @Override
     public boolean syncData(DistroData data, String targetServer) {
         if (!memberManager.hasMember(targetServer)) {
             return true;
         }
         byte[] dataContent = data.getContent();
+        // put 请求 /v1/ns/distro/datum
         return NamingProxy.syncData(dataContent, data.getDistroKey().getTargetServer());
     }
-    
+
     @Override
     public void syncData(DistroData data, String targetServer, DistroCallback callback) {
-    
+
     }
-    
+
     @Override
     public boolean syncVerifyData(DistroData verifyData, String targetServer) {
         if (!memberManager.hasMember(targetServer)) {
             return true;
         }
+        // put 请求 /v1/ns/distro/checksum
         NamingProxy.syncCheckSums(verifyData.getContent(), targetServer);
         return true;
     }
-    
+
     @Override
     public void syncVerifyData(DistroData verifyData, String targetServer, DistroCallback callback) {
-    
+
     }
-    
+
     @Override
     public DistroData getData(DistroKey key, String targetServer) {
         try {
@@ -80,13 +82,14 @@ public class DistroHttpAgent implements DistroTransportAgent {
                 toUpdateKeys = new ArrayList<>(1);
                 toUpdateKeys.add(key.getResourceKey());
             }
+            //get 请求 /v1/ns/distro/datum 获取数据
             byte[] queriedData = NamingProxy.getData(toUpdateKeys, key.getTargetServer());
             return new DistroData(key, queriedData);
         } catch (Exception e) {
             throw new DistroException(String.format("Get data from %s failed.", key.getTargetServer()), e);
         }
     }
-    
+
     @Override
     public DistroData getDatumSnapshot(String targetServer) {
         try {

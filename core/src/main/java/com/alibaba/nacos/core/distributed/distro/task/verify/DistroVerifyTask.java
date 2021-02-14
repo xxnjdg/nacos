@@ -31,16 +31,16 @@ import java.util.List;
  * @author xiweng.yy
  */
 public class DistroVerifyTask implements Runnable {
-    
+
     private final ServerMemberManager serverMemberManager;
-    
+
     private final DistroComponentHolder distroComponentHolder;
-    
+
     public DistroVerifyTask(ServerMemberManager serverMemberManager, DistroComponentHolder distroComponentHolder) {
         this.serverMemberManager = serverMemberManager;
         this.distroComponentHolder = distroComponentHolder;
     }
-    
+
     @Override
     public void run() {
         try {
@@ -55,13 +55,14 @@ public class DistroVerifyTask implements Runnable {
             Loggers.DISTRO.error("[DISTRO-FAILED] verify task failed.", e);
         }
     }
-    
+
     private void verifyForDataStorage(String type, List<Member> targetServer) {
         DistroData distroData = distroComponentHolder.findDataStorage(type).getVerifyData();
         if (null == distroData) {
             return;
         }
         distroData.setType(DataOperation.VERIFY);
+        //广播
         for (Member member : targetServer) {
             try {
                 distroComponentHolder.findTransportAgent(type).syncVerifyData(distroData, member.getAddress());

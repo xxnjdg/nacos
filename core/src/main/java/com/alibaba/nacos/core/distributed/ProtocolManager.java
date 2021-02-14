@@ -45,30 +45,30 @@ import java.util.Set;
 @SuppressWarnings("all")
 @Component(value = "ProtocolManager")
 public class ProtocolManager extends MemberChangeListener implements DisposableBean {
-    
+
     private CPProtocol cpProtocol;
-    
+
     private APProtocol apProtocol;
-    
+
     private final ServerMemberManager memberManager;
-    
+
     private boolean apInit = false;
-    
+
     private boolean cpInit = false;
-    
+
     private Set<Member> oldMembers;
-    
+
     public ProtocolManager(ServerMemberManager memberManager) {
         this.memberManager = memberManager;
         NotifyCenter.registerSubscriber(this);
     }
-    
+
     public static Set<String> toAPMembersInfo(Collection<Member> members) {
         Set<String> nodes = new HashSet<>();
         members.forEach(member -> nodes.add(member.getAddress()));
         return nodes;
     }
-    
+
     public static Set<String> toCPMembersInfo(Collection<Member> members) {
         Set<String> nodes = new HashSet<>();
         members.forEach(member -> {
@@ -78,7 +78,7 @@ public class ProtocolManager extends MemberChangeListener implements DisposableB
         });
         return nodes;
     }
-    
+
     public CPProtocol getCpProtocol() {
         synchronized (this) {
             if (!cpInit) {
@@ -88,7 +88,7 @@ public class ProtocolManager extends MemberChangeListener implements DisposableB
         }
         return cpProtocol;
     }
-    
+
     public APProtocol getApProtocol() {
         synchronized (this) {
             if (!apInit) {
@@ -98,7 +98,7 @@ public class ProtocolManager extends MemberChangeListener implements DisposableB
         }
         return apProtocol;
     }
-    
+
     @PreDestroy
     public void destroy() {
         if (Objects.nonNull(apProtocol)) {
@@ -108,7 +108,7 @@ public class ProtocolManager extends MemberChangeListener implements DisposableB
             cpProtocol.shutdown();
         }
     }
-    
+
     private void initAPProtocol() {
         ApplicationUtils.getBeanIfExist(APProtocol.class, protocol -> {
             Class configType = ClassUtils.resolveGenericType(protocol.getClass());
@@ -118,17 +118,18 @@ public class ProtocolManager extends MemberChangeListener implements DisposableB
             ProtocolManager.this.apProtocol = protocol;
         });
     }
-    
+
     private void initCPProtocol() {
         ApplicationUtils.getBeanIfExist(CPProtocol.class, protocol -> {
             Class configType = ClassUtils.resolveGenericType(protocol.getClass());
+            //RaftConfig
             Config config = (Config) ApplicationUtils.getBean(configType);
             injectMembers4CP(config);
             protocol.init((config));
             ProtocolManager.this.cpProtocol = protocol;
         });
     }
-    
+
     private void injectMembers4CP(Config config) {
         final Member selfMember = memberManager.getSelf();
         final String self = selfMember.getIp() + ":" + Integer
@@ -136,13 +137,13 @@ public class ProtocolManager extends MemberChangeListener implements DisposableB
         Set<String> others = toCPMembersInfo(memberManager.allMembers());
         config.setMembers(self, others);
     }
-    
+
     private void injectMembers4AP(Config config) {
         final String self = memberManager.getSelf().getAddress();
         Set<String> others = toAPMembersInfo(memberManager.allMembers());
         config.setMembers(self, others);
     }
-    
+
     @Override
     public void onEvent(MembersChangeEvent event) {
         // Here, the sequence of node change events is very important. For example,

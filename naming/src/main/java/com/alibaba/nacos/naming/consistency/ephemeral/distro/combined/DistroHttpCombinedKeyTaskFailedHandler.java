@@ -30,22 +30,23 @@ import com.alibaba.nacos.naming.misc.GlobalConfig;
  * @author xiweng.yy
  */
 public class DistroHttpCombinedKeyTaskFailedHandler implements DistroFailedTaskHandler {
-    
+
     private final GlobalConfig globalConfig;
-    
+
     private final DistroTaskEngineHolder distroTaskEngineHolder;
-    
+
     public DistroHttpCombinedKeyTaskFailedHandler(GlobalConfig globalConfig,
             DistroTaskEngineHolder distroTaskEngineHolder) {
         this.globalConfig = globalConfig;
         this.distroTaskEngineHolder = distroTaskEngineHolder;
     }
-    
+
     @Override
     public void retry(DistroKey distroKey, DataOperation action) {
         DistroHttpCombinedKey combinedKey = (DistroHttpCombinedKey) distroKey;
         for (String each : combinedKey.getActualResourceTypes()) {
             DistroKey newKey = new DistroKey(each, KeyBuilder.INSTANCE_LIST_KEY_PREFIX, distroKey.getTargetServer());
+            //默认设置延时5秒后进行集群同步
             DistroDelayTask newTask = new DistroDelayTask(newKey, action, globalConfig.getSyncRetryDelay());
             distroTaskEngineHolder.getDelayTaskExecuteEngine().addTask(newKey, newTask);
         }

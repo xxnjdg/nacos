@@ -44,53 +44,59 @@ import java.util.List;
  * @author nkorange
  */
 public class ClientBeatCheckTask implements Runnable {
-    
+
     private Service service;
-    
+
     public ClientBeatCheckTask(Service service) {
         this.service = service;
     }
-    
+
     @JsonIgnore
     public PushService getPushService() {
         return ApplicationUtils.getBean(PushService.class);
     }
-    
+
     @JsonIgnore
     public DistroMapper getDistroMapper() {
         return ApplicationUtils.getBean(DistroMapper.class);
     }
-    
+
     public GlobalConfig getGlobalConfig() {
         return ApplicationUtils.getBean(GlobalConfig.class);
     }
-    
+
     public SwitchDomain getSwitchDomain() {
         return ApplicationUtils.getBean(SwitchDomain.class);
     }
-    
+
     public String taskKey() {
         return KeyBuilder.buildServiceMetaKey(service.getNamespaceId(), service.getName());
     }
-    
+
     @Override
     public void run() {
         try {
+            //单机模式返回 true
             if (!getDistroMapper().responsible(service.getName())) {
                 return;
             }
-            
+
+            //默认为true
             if (!getSwitchDomain().isHealthCheckEnabled()) {
                 return;
             }
-            
+
+            //获取非持久化实例
             List<Instance> instances = service.allIPs(true);
-            
+
             // first set health status of instances:
             for (Instance instance : instances) {
+                //目前时间 大于 实例最后更新时间 加 实例超时时间（默认15秒）
                 if (System.currentTimeMillis() - instance.getLastBeat() > instance.getInstanceHeartBeatTimeOut()) {
+                    //默认 false
                     if (!instance.isMarked()) {
                         if (instance.isHealthy()) {
+                            //设置状态
                             instance.setHealthy(false);
                             Loggers.EVT_LOG
                                     .info("{POS} {IP-DISABLED} valid: {}:{}@{}@{}, region: {}, msg: client timeout after {}, last beat: {}",
@@ -98,49 +104,54 @@ public class ClientBeatCheckTask implements Runnable {
                                             service.getName(), UtilsAndCommons.LOCALHOST_SITE,
                                             instance.getInstanceHeartBeatTimeOut(), instance.getLastBeat());
                             getPushService().serviceChanged(service);
+                            //没有使用
                             ApplicationUtils.publishEvent(new InstanceHeartbeatTimeoutEvent(this, instance));
                         }
                     }
                 }
             }
-            
+
             if (!getGlobalConfig().isExpireInstance()) {
                 return;
             }
-            
+
             // then remove obsolete instances:
             for (Instance instance : instances) {
-                
+
+                //默认 false
                 if (instance.isMarked()) {
                     continue;
                 }
-                
+
+                //当前时间 大于 实例最后更新时间 加 实例删除超时时间(默认30秒)
                 if (System.currentTimeMillis() - instance.getLastBeat() > instance.getIpDeleteTimeout()) {
                     // delete instance
                     Loggers.SRV_LOG.info("[AUTO-DELETE-IP] service: {}, ip: {}", service.getName(),
                             JacksonUtils.toJson(instance));
+                    // delete 请求 /nacos/v1/ns/instance 删除实例
                     deleteIp(instance);
                 }
             }
-            
+
         } catch (Exception e) {
             Loggers.SRV_LOG.warn("Exception while processing client beat time out.", e);
         }
-        
+
     }
-    
+
     private void deleteIp(Instance instance) {
-        
+
         try {
             NamingProxy.Request request = NamingProxy.Request.newRequest();
             request.appendParam("ip", instance.getIp()).appendParam("port", String.valueOf(instance.getPort()))
                     .appendParam("ephemeral", "true").appendParam("clusterName", instance.getClusterName())
                     .appendParam("serviceName", service.getName()).appendParam("namespaceId", service.getNamespaceId());
-            
+
             String url = "http://" + IPUtil.localHostIP() + IPUtil.IP_PORT_SPLITER + EnvUtil.getPort() + EnvUtil.getContextPath()
                     + UtilsAndCommons.NACOS_NAMING_CONTEXT + "/instance?" + request.toUrl();
-            
+
             // delete instance asynchronously:
+            // delete 请求 /nacos/v1/ns/instance 删除实例
             HttpClient.asyncHttpDelete(url, null, null, new Callback<String>() {
                 @Override
                 public void onReceive(RestResult<String> result) {
@@ -150,20 +161,20 @@ public class ClientBeatCheckTask implements Runnable {
                                         instance.toJson(), result.getMessage(), result.getCode());
                     }
                 }
-    
+
                 @Override
                 public void onError(Throwable throwable) {
                     Loggers.SRV_LOG
                             .error("[IP-DEAD] failed to delete ip automatically, ip: {}, error: {}", instance.toJson(),
                                     throwable);
                 }
-    
+
                 @Override
                 public void onCancel() {
-        
+
                 }
             });
-            
+
         } catch (Exception e) {
             Loggers.SRV_LOG
                     .error("[IP-DEAD] failed to delete ip automatically, ip: {}, error: {}", instance.toJson(), e);

@@ -51,87 +51,88 @@ import java.util.concurrent.TimeUnit;
  * @since 0.5.0
  */
 public class StartingApplicationListener implements NacosApplicationListener {
-    
+
     private static final Logger LOGGER = LoggerFactory.getLogger(StartingApplicationListener.class);
-    
+
     private static final String MODE_PROPERTY_KEY_STAND_MODE = "nacos.mode";
-    
+
     private static final String MODE_PROPERTY_KEY_FUNCTION_MODE = "nacos.function.mode";
-    
+
     private static final String LOCAL_IP_PROPERTY_KEY = "nacos.local.ip";
-    
+
     private static final String NACOS_APPLICATION_CONF = "nacos_application_conf";
-    
+
+    //存 --spring.config.additional-location 文件夹里的 application.properties 文件属性
     private static final Map<String, Object> SOURCES = new ConcurrentHashMap<>();
-    
+
     private ScheduledExecutorService scheduledExecutorService;
-    
+
     private volatile boolean starting;
-    
+
     @Override
     public void starting() {
         starting = true;
     }
-    
+
     @Override
     public void environmentPrepared(ConfigurableEnvironment environment) {
         makeWorkDir();
-        
+
         injectEnvironment(environment);
-        
+
         loadPreProperties(environment);
-        
+
         initSystemProperty();
     }
-    
+
     @Override
     public void contextPrepared(ConfigurableApplicationContext context) {
         logClusterConf();
-        
+
         logStarting();
     }
-    
+
     @Override
     public void contextLoaded(ConfigurableApplicationContext context) {
-    
+
     }
-    
+
     @Override
     public void started(ConfigurableApplicationContext context) {
         starting = false;
-        
+
         closeExecutor();
-        
+
         judgeStorageMode(context.getEnvironment());
     }
-    
+
     @Override
     public void running(ConfigurableApplicationContext context) {
     }
-    
+
     @Override
     public void failed(ConfigurableApplicationContext context, Throwable exception) {
         starting = false;
-        
+
         makeWorkDir();
-        
+
         LOGGER.error("Startup errors : {}", exception);
         ThreadPoolManager.shutdown();
         WatchFileCenter.shutdown();
         NotifyCenter.shutdown();
-        
+
         closeExecutor();
-        
+
         context.close();
-        
+
         LOGGER.error("Nacos failed to start, please see {} for more details.",
                 Paths.get(EnvUtil.getNacosHome(), "logs/nacos.log"));
     }
-    
+
     private void injectEnvironment(ConfigurableEnvironment environment) {
         EnvUtil.setEnvironment(environment);
     }
-    
+
     private void loadPreProperties(ConfigurableEnvironment environment) {
         try {
             SOURCES.putAll(EnvUtil.loadProperties(EnvUtil.getApplicationConfFileResource()));
@@ -142,28 +143,30 @@ public class StartingApplicationListener implements NacosApplicationListener {
             throw new NacosRuntimeException(NacosException.SERVER_ERROR, e);
         }
     }
-    
+
     private void registerWatcher() throws NacosException {
-        
+
         WatchFileCenter.registerWatcher(EnvUtil.getConfPath(), new FileWatcher() {
             @Override
             public void onChange(FileChangeEvent event) {
                 try {
+                    //改动 --spring.config.additional-location 文件夹里的 application.properties 的文件会被监听到
+                    //重新加载，把新属性加到 SOURCES
                     Map<String, ?> tmp = EnvUtil.loadProperties(EnvUtil.getApplicationConfFileResource());
                     SOURCES.putAll(tmp);
                 } catch (IOException ignore) {
                     LOGGER.warn("Failed to monitor file {}", ignore);
                 }
             }
-            
+
             @Override
             public boolean interest(String context) {
                 return StringUtils.contains(context, "application.properties");
             }
         });
-        
+
     }
-    
+
     private void initSystemProperty() {
         if (EnvUtil.getStandaloneMode()) {
             System.setProperty(MODE_PROPERTY_KEY_STAND_MODE, "stand alone");
@@ -177,13 +180,15 @@ public class StartingApplicationListener implements NacosApplicationListener {
         } else if (EnvUtil.FUNCTION_MODE_NAMING.equals(EnvUtil.getFunctionMode())) {
             System.setProperty(MODE_PROPERTY_KEY_FUNCTION_MODE, EnvUtil.FUNCTION_MODE_NAMING);
         }
-        
+
         System.setProperty(LOCAL_IP_PROPERTY_KEY, InetUtils.getSelfIP());
     }
-    
+
     private void logClusterConf() {
+        //不是在 单机模式下
         if (!EnvUtil.getStandaloneMode()) {
             try {
+                //打印nacos 服务ip地址
                 List<String> clusterConf = EnvUtil.readClusterConf();
                 LOGGER.info("The server IP list of Nacos is {}", clusterConf);
             } catch (IOException e) {
@@ -191,49 +196,52 @@ public class StartingApplicationListener implements NacosApplicationListener {
             }
         }
     }
-    
+
     private void closeExecutor() {
         if (scheduledExecutorService != null) {
             scheduledExecutorService.shutdownNow();
         }
     }
-    
+
     private void makeWorkDir() {
         String[] dirNames = new String[] {"logs", "conf", "data"};
         for (String dirName : dirNames) {
             LOGGER.info("Nacos Log files: {}", Paths.get(EnvUtil.getNacosHome(), dirName).toString());
             try {
+                //在 EnvUtil.getNacosHome() 目录创建这三个目录 "logs", "conf", "data"
                 DiskUtils.forceMkdir(new File(Paths.get(EnvUtil.getNacosHome(), dirName).toUri()));
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
         }
     }
-    
+
     private void logStarting() {
+        //集群模式下
         if (!EnvUtil.getStandaloneMode()) {
-            
+
             scheduledExecutorService = ExecutorFactory
                     .newSingleScheduledExecutorService(new NameThreadFactory("com.alibaba.nacos.core.nacos-starting"));
-            
+
             scheduledExecutorService.scheduleWithFixedDelay(() -> {
                 if (starting) {
+                    //打印
                     LOGGER.info("Nacos is starting...");
                 }
             }, 1, 1, TimeUnit.SECONDS);
         }
     }
-    
+
     private void judgeStorageMode(ConfigurableEnvironment env) {
-        
+
         // External data sources are used by default in cluster mode
         boolean useExternalStorage = ("mysql".equalsIgnoreCase(env.getProperty("spring.datasource.platform", "")));
-        
+
         // must initialize after setUseExternalDB
         // This value is true in stand-alone mode and false in cluster mode
         // If this value is set to true in cluster mode, nacos's distributed storage engine is turned on
         // default value is depend on ${nacos.standalone}
-        
+
         if (!useExternalStorage) {
             boolean embeddedStorage = EnvUtil.getStandaloneMode() || Boolean.getBoolean("embeddedStorage");
             // If the embedded data source storage is not turned on, it is automatically
@@ -242,7 +250,8 @@ public class StartingApplicationListener implements NacosApplicationListener {
                 useExternalStorage = true;
             }
         }
-        
+
+        //打印
         LOGGER.info("Nacos started successfully in {} mode. use {} storage",
                 System.getProperty(MODE_PROPERTY_KEY_STAND_MODE), useExternalStorage ? "external" : "embedded");
     }

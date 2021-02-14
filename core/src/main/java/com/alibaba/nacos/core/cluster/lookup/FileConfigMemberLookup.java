@@ -37,49 +37,52 @@ import java.util.List;
  * @author <a href="mailto:liaochuntao@live.com">liaochuntao</a>
  */
 public class FileConfigMemberLookup extends AbstractMemberLookup {
-    
+
     private FileWatcher watcher = new FileWatcher() {
         @Override
         public void onChange(FileChangeEvent event) {
             readClusterConfFromDisk();
         }
-        
+
         @Override
         public boolean interest(String context) {
             return StringUtils.contains(context, "cluster.conf");
         }
     };
-    
+
     @Override
     public void start() throws NacosException {
         if (start.compareAndSet(false, true)) {
             readClusterConfFromDisk();
-            
+
             // Use the inotify mechanism to monitor file changes and automatically
             // trigger the reading of cluster.conf
             try {
+                //监听 cluster.conf 是否改变
                 WatchFileCenter.registerWatcher(EnvUtil.getConfPath(), watcher);
             } catch (Throwable e) {
                 Loggers.CLUSTER.error("An exception occurred in the launch file monitor : {}", e.getMessage());
             }
         }
     }
-    
+
     @Override
     public void destroy() throws NacosException {
         WatchFileCenter.deregisterWatcher(EnvUtil.getConfPath(), watcher);
     }
-    
+
     private void readClusterConfFromDisk() {
         Collection<Member> tmpMembers = new ArrayList<>();
         try {
+            //读取集群地址
             List<String> tmp = EnvUtil.readClusterConf();
+            //封装成 Member
             tmpMembers = MemberUtil.readServerConf(tmp);
         } catch (Throwable e) {
             Loggers.CLUSTER
                     .error("nacos-XXXX [serverlist] failed to get serverlist from disk!, error : {}", e.getMessage());
         }
-        
+
         afterLookup(tmpMembers);
     }
 }
